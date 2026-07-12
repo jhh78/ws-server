@@ -1,0 +1,13 @@
+# Active runtime config (copy a profile from configs/ into this file)
+.env
+
+# Build artifacts
+ws-server
+ws-server.exe
+ws-server-*
+*.exe
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
