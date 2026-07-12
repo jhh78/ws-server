@@ -10,6 +10,7 @@ import (
 	"github.com/jhh78/ws-server/server"
 )
 
+// TestHealthHandler 는 GET /health 가 200 OK 를 반환하는지 확인합니다.
 func TestHealthHandler(t *testing.T) {
 	t.Parallel()
 
@@ -26,6 +27,7 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
+// TestWelcomeJSON 은 접속 직후 welcome 과 protocol 페이로드를 검증합니다.
 func TestWelcomeJSON(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +47,7 @@ func TestWelcomeJSON(t *testing.T) {
 	}
 }
 
+// TestAreaBroadcastToAllMembers 는 에리어 멤버 전원 수신·외부자 미수신을 검증합니다.
 func TestAreaBroadcastToAllMembers(t *testing.T) {
 	t.Parallel()
 
@@ -102,6 +105,7 @@ func TestAreaBroadcastToAllMembers(t *testing.T) {
 	}
 }
 
+// TestChannelBroadcastParty 는 파티 채널 격리 브로드캐스트를 검증합니다.
 func TestChannelBroadcastParty(t *testing.T) {
 	t.Parallel()
 
@@ -155,6 +159,7 @@ func TestChannelBroadcastParty(t *testing.T) {
 	}
 }
 
+// TestChannelGuild 는 길드 채널 send/message 를 검증합니다.
 func TestChannelGuild(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +190,7 @@ func TestChannelGuild(t *testing.T) {
 	}
 }
 
+// TestWhisperToClient 는 1:1 whisper 와 제3자 미수신을 검증합니다.
 func TestWhisperToClient(t *testing.T) {
 	t.Parallel()
 
@@ -223,6 +229,7 @@ func TestWhisperToClient(t *testing.T) {
 	}
 }
 
+// TestSendRequiresMembership 는 미가입 send 가 error 를 반환하는지 확인합니다.
 func TestSendRequiresMembership(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +247,7 @@ func TestSendRequiresMembership(t *testing.T) {
 	}
 }
 
+// TestLeaveArea 는 join → leave → left 시퀀스를 검증합니다.
 func TestLeaveArea(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +261,7 @@ func TestLeaveArea(t *testing.T) {
 	expectType(t, conn, "left")
 }
 
+// TestPingPong 은 type=ping → pong 을 검증합니다.
 func TestPingPong(t *testing.T) {
 	t.Parallel()
 
@@ -263,6 +272,7 @@ func TestPingPong(t *testing.T) {
 	expectType(t, conn, "pong")
 }
 
+// TestWebSocketRejectsNonUpgrade 는 일반 HTTP GET /ws 가 업그레이드 실패(비 200)인지 확인합니다.
 func TestWebSocketRejectsNonUpgrade(t *testing.T) {
 	t.Parallel()
 
@@ -279,6 +289,7 @@ func TestWebSocketRejectsNonUpgrade(t *testing.T) {
 	}
 }
 
+// TestMaxClientsPerArea 는 에리어 인원 한도 초과 시 error 를 검증합니다.
 func TestMaxClientsPerArea(t *testing.T) {
 	t.Parallel()
 

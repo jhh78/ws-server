@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestSystemAndAccessLogFileMode 는 file 모드 시스템·액세스 로그 파일 기록을 검증합니다.
 func TestSystemAndAccessLogFileMode(t *testing.T) {
 	dir := t.TempDir()
 	sysPath := filepath.Join(dir, "system.log")
@@ -51,6 +52,7 @@ func TestSystemAndAccessLogFileMode(t *testing.T) {
 	}
 }
 
+// TestSystemAndAccessLogDBMode 는 sqlite DB 모드 insert 를 검증합니다.
 func TestSystemAndAccessLogDBMode(t *testing.T) {
 	dir := t.TempDir()
 	dsn := filepath.Join(dir, "log.db")
@@ -96,15 +98,16 @@ func TestSystemAndAccessLogDBMode(t *testing.T) {
 	}
 }
 
+// TestNormalizeLogDBDriver 는 드라이버 별칭 정규화를 검증합니다.
 func TestNormalizeLogDBDriver(t *testing.T) {
 	cases := map[string]string{
-		"sqlite":       config.LogDBSQLite,
-		"SQLite3":      config.LogDBSQLite,
-		"mysql":        config.LogDBMySQL,
-		"MariaDB":      config.LogDBMySQL,
-		"postgres":     config.LogDBPostgres,
-		"postgresql":   config.LogDBPostgres,
-		"pg":           config.LogDBPostgres,
+		"sqlite":     config.LogDBSQLite,
+		"SQLite3":    config.LogDBSQLite,
+		"mysql":      config.LogDBMySQL,
+		"MariaDB":    config.LogDBMySQL,
+		"postgres":   config.LogDBPostgres,
+		"postgresql": config.LogDBPostgres,
+		"pg":         config.LogDBPostgres,
 	}
 	for in, want := range cases {
 		if got := config.NormalizeLogDBDriver(in); got != want {
@@ -113,6 +116,7 @@ func TestNormalizeLogDBDriver(t *testing.T) {
 	}
 }
 
+// TestLogDBDriverValidation 은 미지원 드라이버 거절과 지원 목록 통과를 검증합니다.
 func TestLogDBDriverValidation(t *testing.T) {
 	c := config.DefaultLog()
 	c.SystemMode = config.LogModeDB
@@ -130,6 +134,7 @@ func TestLogDBDriverValidation(t *testing.T) {
 	}
 }
 
+// TestLogConfigFromEnv 는 SYSTEM/ACCESS 모드를 서로 다르게 env 에서 로드하고 로거를 엽니다.
 func TestLogConfigFromEnv(t *testing.T) {
 	clearConfigEnv(t)
 	// also clear log keys

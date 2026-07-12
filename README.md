@@ -25,7 +25,6 @@
 8. [외부 클라이언트 연동 예](#8-외부-클라이언트-연동-예)
 9. [테스트](#9-테스트)
 10. [디플로이 (Linux)](#10-디플로이-linux)
-11. [프로젝트 구조](#11-프로젝트-구조)
 
 ---
 
@@ -149,56 +148,22 @@ cp sample.env .env
 
 #### 로그 (시스템 / 액세스)
 
-| 변수 | 기본 | 설명 |
-|------|------|------|
-| `SYSTEM_LOG_MODE` | `file` | 시스템 로그: `off` \| `file` \| `db` |
-| `SYSTEM_LOG_FILE` | `logs/system.log` | `file` 모드 경로 |
-| `ACCESS_LOG_MODE` | `file` | 액세스 로그: `off` \| `file` \| `db` |
-| `ACCESS_LOG_FILE` | `logs/access.log` | `file` 모드 경로 |
-| `LOG_DB_DRIVER` | `sqlite` | `sqlite` \| `mysql` \| `postgres` (별칭: sqlite3, mariadb, postgresql, pg) |
-| `LOG_DB_DSN` | `logs/ws-server.db` | 드라이버별 연결 문자열 (아래 예) |
+시스템 로그와 액세스 로그는 **`sample.env` 에 각각 등록**합니다.  
+`cp sample.env .env` 후 `.env` 에서 모드·경로·DB 를 조정하세요.
 
-- **시스템 로그**: 기동, 접속/종료, 업그레이드 실패, listen 오류 등 (`INFO`/`WARN`/`ERROR`)
-- **액세스 로그**: `connect` / `disconnect` / `join` / `leave` / `send` / `whisper` / `ping` / `error` / `upgrade_fail`
-- DB 모드 시 테이블 `system_logs`, `access_logs` 를 기동 시 자동 생성 (SQLite / MySQL / PostgreSQL 방언)
+| 구분 | 변수 | 기본 | 설명 |
+|------|------|------|------|
+| 시스템 | `SYSTEM_LOG_MODE` | `file` | `off` \| `file` \| `db` |
+| 시스템 | `SYSTEM_LOG_FILE` | `logs/system.log` | `file` 일 때 경로 |
+| 액세스 | `ACCESS_LOG_MODE` | `file` | `off` \| `file` \| `db` |
+| 액세스 | `ACCESS_LOG_FILE` | `logs/access.log` | `file` 일 때 경로 |
+| DB 공통 | `LOG_DB_DRIVER` | `sqlite` | `sqlite` \| `mysql` \| `postgres` (별칭: sqlite3, mariadb, postgresql, pg) |
+| DB 공통 | `LOG_DB_DSN` | `logs/ws-server.db` | 드라이버별 연결 문자열 — **DSN 예는 `sample.env` 주석** |
 
-`file` 예 (`sample.env` 기본):
-
-```env
-SYSTEM_LOG_MODE=file
-SYSTEM_LOG_FILE=logs/system.log
-ACCESS_LOG_MODE=file
-ACCESS_LOG_FILE=logs/access.log
-```
-
-`db` — SQLite:
-
-```env
-SYSTEM_LOG_MODE=db
-ACCESS_LOG_MODE=db
-LOG_DB_DRIVER=sqlite
-LOG_DB_DSN=logs/ws-server.db
-```
-
-`db` — MySQL / MariaDB:
-
-```env
-SYSTEM_LOG_MODE=db
-ACCESS_LOG_MODE=db
-LOG_DB_DRIVER=mysql
-LOG_DB_DSN=user:password@tcp(127.0.0.1:3306)/ws_logs?parseTime=true&charset=utf8mb4
-```
-
-`db` — PostgreSQL:
-
-```env
-SYSTEM_LOG_MODE=db
-ACCESS_LOG_MODE=db
-LOG_DB_DRIVER=postgres
-LOG_DB_DSN=postgres://user:password@127.0.0.1:5432/ws_logs?sslmode=disable
-```
-
-혼용 가능: 시스템만 DB, 액세스는 파일 등. 원격 DB 는 기동 시 `Ping` 으로 연결을 확인합니다.
+- **시스템**: 기동, 접속/종료, 업그레이드 실패, listen 오류 등 (`INFO`/`WARN`/`ERROR`)
+- **액세스**: `connect` / `disconnect` / `join` / `leave` / `send` / `whisper` / `ping` / `error` / `upgrade_fail`
+- 시스템·액세스 모드는 **서로 다르게** 둘 수 있음 (예: 시스템 `file`, 액세스 `db`)
+- `db` 모드 시 테이블 `system_logs`, `access_logs` 기동 시 자동 생성. 원격 DB 는 `Ping` 으로 확인
 
 파일 형식: `KEY=VALUE`, `#` 주석, 빈 줄 무시. 알 수 없는 키는 `AppConfig.Extra` 에 보관됩니다 (향후 확장용).
 
@@ -412,36 +377,265 @@ func extProcessOutbound(c *Client, msg *Envelope) (out *Envelope, drop bool)
 
 ## 8. 외부 클라이언트 연동 예
 
-서버 저장소 밖 코드 예시입니다 (참고용).
+서버 저장소 밖 코드 예시입니다 (참고용). 공통 흐름:
 
-**브라우저 콘솔**
-
-```javascript
-const ws = new WebSocket("ws://localhost:8080/ws");
-ws.onmessage = (e) => console.log(JSON.parse(e.data));
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: "join", scope: "area", target: "lobby",
-    payload: { name: "web-user" }
-  }));
-};
-```
-
-**접속 URL**
-
-| 환경 | URL |
-|------|-----|
-| 로컬 | `ws://127.0.0.1:8080/ws` |
-| TLS 리버스 프록시 | `wss://api.example.com/ws` |
-
-클라이언트가 해야 할 일:
-
-1. WebSocket 연결
+1. WebSocket 연결 (`ws://` 또는 프록시 뒤 `wss://`)
 2. `welcome` 에서 `client_id` 저장 (귓속말용)
-3. 필요 시 `join` 후 `send` / `whisper`
+3. `join` 후 `send` / `whisper`
 4. 수신 `type` 분기 처리
 
-서버가 하지 않는 일: 로그인 UI, 푸시 알림(Firebase 등 별도), 영구 채팅 저장(확장으로 구현).
+| 환경 | URL 예 |
+|------|--------|
+| 직접 소켓 | `ws://127.0.0.1:8080/ws` |
+| 리버스 프록시 + TLS | `wss://api.example.com/ws` |
+
+서버가 하지 않는 일: 로그인 UI, 푸시 알림, 영구 채팅 저장(확장으로 구현).
+
+### 8.1 JavaScript (브라우저 / Node)
+
+```javascript
+// 브라우저: WebSocket 내장
+// Node: npm i ws  후  const WebSocket = require("ws");
+
+const url = "ws://127.0.0.1:8080/ws";
+const ws = new WebSocket(url);
+let clientId = null;
+
+ws.onopen = () => {
+  console.log("connected");
+};
+
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(typeof ev.data === "string" ? ev.data : ev.data.toString());
+  console.log("←", msg);
+
+  if (msg.type === "welcome") {
+    clientId = msg.client_id;
+    ws.send(JSON.stringify({
+      type: "join",
+      scope: "area",
+      target: "lobby",
+      payload: { name: "js-user" },
+    }));
+  }
+
+  if (msg.type === "joined") {
+    ws.send(JSON.stringify({
+      type: "send",
+      scope: "area",
+      target: "lobby",
+      payload: { text: "hello from js" },
+    }));
+  }
+};
+
+ws.onerror = (e) => console.error(e);
+ws.onclose = () => console.log("closed");
+```
+
+### 8.2 Flutter (Dart)
+
+```dart
+// pubspec.yaml:  web_socket_channel: ^3.0.0
+
+import 'dart:convert';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+void main() async {
+  final uri = Uri.parse('ws://127.0.0.1:8080/ws');
+  final channel = WebSocketChannel.connect(uri);
+  String? clientId;
+
+  channel.stream.listen((raw) {
+    final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+    print('← $msg');
+
+    if (msg['type'] == 'welcome') {
+      clientId = msg['client_id'] as String?;
+      channel.sink.add(jsonEncode({
+        'type': 'join',
+        'scope': 'area',
+        'target': 'lobby',
+        'payload': {'name': 'flutter-user'},
+      }));
+    }
+
+    if (msg['type'] == 'joined') {
+      channel.sink.add(jsonEncode({
+        'type': 'send',
+        'scope': 'area',
+        'target': 'lobby',
+        'payload': {'text': 'hello from flutter'},
+      }));
+    }
+  });
+}
+```
+
+### 8.3 PHP (Ratchet / ReactPHP 스타일 클라이언트)
+
+```php
+<?php
+// composer require textalk/websocket
+
+use WebSocket\Client;
+
+$url = 'ws://127.0.0.1:8080/ws';
+$client = new Client($url);
+$clientId = null;
+
+// 서버 welcome 수신
+$raw = $client->receive();
+$msg = json_decode($raw, true);
+if (($msg['type'] ?? '') === 'welcome') {
+    $clientId = $msg['client_id'] ?? null;
+    $client->send(json_encode([
+        'type'    => 'join',
+        'scope'   => 'area',
+        'target'  => 'lobby',
+        'payload' => ['name' => 'php-user'],
+    ]));
+}
+
+// joined 대기 후 send
+$raw = $client->receive();
+$msg = json_decode($raw, true);
+if (($msg['type'] ?? '') === 'joined') {
+    $client->send(json_encode([
+        'type'    => 'send',
+        'scope'   => 'area',
+        'target'  => 'lobby',
+        'payload' => ['text' => 'hello from php'],
+    ]));
+}
+
+// 이후 메시지 수신 루프 예
+// while (true) { echo $client->receive(), PHP_EOL; }
+
+$client->close();
+```
+
+### 8.4 C# (.NET)
+
+```csharp
+// Package: System.Net.WebSockets (내장) 또는 ClientWebSocket
+
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+
+var url = new Uri("ws://127.0.0.1:8080/ws");
+using var ws = new ClientWebSocket();
+await ws.ConnectAsync(url, CancellationToken.None);
+
+async Task SendAsync(object body)
+{
+    var json = JsonSerializer.Serialize(body);
+    var bytes = Encoding.UTF8.GetBytes(json);
+    await ws.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+}
+
+async Task<JsonElement> ReceiveAsync()
+{
+    var buf = new byte[64 * 1024];
+    var result = await ws.ReceiveAsync(buf, CancellationToken.None);
+    var json = Encoding.UTF8.GetString(buf, 0, result.Count);
+    Console.WriteLine("← " + json);
+    return JsonDocument.Parse(json).RootElement;
+}
+
+var welcome = await ReceiveAsync();
+if (welcome.GetProperty("type").GetString() == "welcome")
+{
+    var clientId = welcome.GetProperty("client_id").GetString();
+    await SendAsync(new
+    {
+        type = "join",
+        scope = "area",
+        target = "lobby",
+        payload = new { name = "csharp-user" }
+    });
+}
+
+var joined = await ReceiveAsync();
+if (joined.GetProperty("type").GetString() == "joined")
+{
+    await SendAsync(new
+    {
+        type = "send",
+        scope = "area",
+        target = "lobby",
+        payload = new { text = "hello from csharp" }
+    });
+}
+
+await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+```
+
+### 8.5 Java (Java-WebSocket)
+
+```java
+// Maven: org.java-websocket:Java-WebSocket:1.5.6
+
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+import org.json.JSONObject;
+
+import java.net.URI;
+
+public class WsClientExample {
+    public static void main(String[] args) throws Exception {
+        URI uri = new URI("ws://127.0.0.1:8080/ws");
+
+        WebSocketClient client = new WebSocketClient(uri) {
+            @Override
+            public void onOpen(ServerHandshake handshakedata) {
+                System.out.println("connected");
+            }
+
+            @Override
+            public void onMessage(String message) {
+                System.out.println("← " + message);
+                JSONObject msg = new JSONObject(message);
+                String type = msg.optString("type");
+
+                if ("welcome".equals(type)) {
+                    String clientId = msg.optString("client_id");
+                    JSONObject join = new JSONObject()
+                        .put("type", "join")
+                        .put("scope", "area")
+                        .put("target", "lobby")
+                        .put("payload", new JSONObject().put("name", "java-user"));
+                    send(join.toString());
+                }
+
+                if ("joined".equals(type)) {
+                    JSONObject sendMsg = new JSONObject()
+                        .put("type", "send")
+                        .put("scope", "area")
+                        .put("target", "lobby")
+                        .put("payload", new JSONObject().put("text", "hello from java"));
+                    send(sendMsg.toString());
+                }
+            }
+
+            @Override
+            public void onClose(int code, String reason, boolean remote) {
+                System.out.println("closed: " + reason);
+            }
+
+            @Override
+            public void onError(Exception ex) {
+                ex.printStackTrace();
+            }
+        };
+
+        client.connectBlocking();
+        Thread.sleep(5000);
+        client.close();
+    }
+}
+```
 
 ---
 
@@ -487,37 +681,37 @@ cp sample.env .env
 ./ws-server
 ```
 
-방화벽에서 **TCP** 포트(기본 8080) 인바운드를 허용합니다.
+클라이언트 접속 방식은 아래 둘 중 하나를 선택합니다.
 
-### systemd 예
+### 직접 소켓 통신
 
-`/etc/systemd/system/ws-server.service`:
+클라이언트가 `ws-server` 에 **바로** 연결합니다.
 
-```ini
-[Unit]
-Description=ws-server (WebSocket over TCP)
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/ws-server
-ExecStart=/opt/ws-server/ws-server
-Restart=on-failure
-RestartSec=5
-# Environment=LISTEN_ADDR=:8080
-
-[Install]
-WantedBy=multi-user.target
-```
+| 항목 | 내용 |
+|------|------|
+| URL | `ws://<서버IP 또는 호스트>:8080/ws` (`LISTEN_ADDR`·`WS_PATH` 에 맞춤) |
+| 방화벽 | `LISTEN_ADDR` TCP 포트 인바운드 허용 |
+| TLS | 앱 자체는 plain WS. 필요 시 앞단 프록시 사용(아래) |
+| 용도 | 사내망, 게임 클라이언트 직접 접속, 개발/테스트 |
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now ws-server
-sudo systemctl status ws-server
+# 예: 모든 인터페이스에서 수신
+# .env → LISTEN_ADDR=0.0.0.0:8080
+./ws-server
 ```
 
-### Nginx (WebSocket 프록시)
+### 리버스 프록시 경유
+
+Nginx, Caddy, 클라우드 LB 등으로 TLS 종료·도메인 노출 후, 백엔드는 내부 주소로만 띄웁니다.
+
+| 항목 | 내용 |
+|------|------|
+| 클라이언트 URL | `wss://api.example.com/ws` |
+| 백엔드 | `http://127.0.0.1:8080` (또는 private IP) |
+| 필수 헤더 | `Upgrade`, `Connection: upgrade` (WebSocket 유지) |
+| 타임아웃 | 장시간 연결이면 read/idle timeout 을 충분히 크게 |
+
+**Nginx 예**
 
 ```nginx
 location /ws {
@@ -526,40 +720,21 @@ location /ws {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 ```
 
-TLS 는 Nginx(또는 로드밸런서)에서 종료하고, 앱은 내부 HTTP/WS 로 두는 구성을 권장합니다.
+**Caddy 예**
 
----
-
-## 11. 프로젝트 구조
-
+```caddy
+api.example.com {
+    reverse_proxy /ws* 127.0.0.1:8080
+}
 ```
-ws-server/                    # 서버 전용 저장소
-├── sample.env                # 설정 샘플 → cp sample.env .env
-├── cmd/ws-server/main.go     # 진입점 (-env, -addr)
-├── config/
-│   ├── config.go             # AppConfig, Load, Validate
-│   ├── log.go                # 시스템/액세스 로그 설정
-│   └── load.go               # .env 파서
-├── logging/                  # file / SQLite 싱크
-│   ├── logging.go
-│   └── db.go
-├── logs/                     # 런타임 생성 (gitignore)
-├── server/
-│   ├── server.go             # TCP Listen, Upgrade, 헬스
-│   ├── client.go             # 수신·송신, onReceive 파이프라인
-│   ├── route.go              # type 라우팅·응답
-│   ├── hub.go                # 에리어·채널 멤버십
-│   ├── message.go            # Envelope JSON
-│   └── extension.go          # 확장 빈 함수 ★
-├── test/                     # 중계·규격 테스트
-├── go.mod
-├── README.md
-└── LICENSE
-```
+
+정리: **직접 소켓**은 단순·저지연, **프록시**는 TLS·도메인·접근 제어에 유리합니다. 프로토콜(JSON Envelope)은 동일합니다.
 
 ---
 

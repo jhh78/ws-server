@@ -5,41 +5,56 @@ import (
 	"strings"
 )
 
-// Log modes for system / access sinks.
+// 로그 모드 상수 (SYSTEM_LOG_MODE / ACCESS_LOG_MODE).
 const (
-	LogModeOff  = "off"
+	// LogModeOff 는 해당 싱크를 끕니다.
+	LogModeOff = "off"
+	// LogModeFile 은 텍스트 파일에 기록합니다.
 	LogModeFile = "file"
-	LogModeDB   = "db"
+	// LogModeDB 는 LOG_DB_DRIVER / LOG_DB_DSN 의 DB 에 기록합니다.
+	LogModeDB = "db"
 )
 
-// Supported LOG_DB_DRIVER values (normalized).
+// LOG_DB_DRIVER 정규화 후 지원 값.
 const (
-	LogDBSQLite     = "sqlite"
-	LogDBMySQL      = "mysql"
-	LogDBPostgres   = "postgres"
+	// LogDBSQLite 는 modernc.org/sqlite 파일 DB.
+	LogDBSQLite = "sqlite"
+	// LogDBMySQL 은 MySQL / MariaDB.
+	LogDBMySQL = "mysql"
+	// LogDBPostgres 는 PostgreSQL.
+	LogDBPostgres = "postgres"
 )
 
-// LogConfig controls system and access logging.
-// System and access each choose file or database independently.
+// LogConfig 는 시스템·액세스 로그 각각 및 공통 DB 연결을 제어합니다.
+//
+// 시스템과 액세스는 서로 다른 모드(file/db/off)를 가질 수 있습니다.
+// sample.env 에 SYSTEM_* / ACCESS_* 를 각각 등록합니다.
 type LogConfig struct {
-	// SystemMode: off | file | db
+	// SystemMode 는 시스템 로그 모드: off | file | db.
 	SystemMode string
-	// AccessMode: off | file | db
+	// AccessMode 는 액세스 로그 모드: off | file | db.
 	AccessMode string
 
-	SystemFile string // used when SystemMode=file
-	AccessFile string // used when AccessMode=file
+	// SystemFile 은 SystemMode=file 일 때 경로.
+	SystemFile string
+	// AccessFile 은 AccessMode=file 일 때 경로.
+	AccessFile string
 
-	// DB settings when either mode is db
-	// DBDriver: sqlite | mysql | postgres (aliases: postgresql, pg, sqlite3)
+	// DBDriver 는 sqlite | mysql | postgres (별칭: postgresql, pg, sqlite3, mariadb).
 	DBDriver string
-	// DBDSN examples:
+	// DBDSN 은 드라이버별 연결 문자열.
+	//
+	// 예:
 	//   sqlite:    logs/ws-server.db
 	//   mysql:     user:pass@tcp(127.0.0.1:3306)/ws_logs?parseTime=true
 	//   postgres:  postgres://user:pass@127.0.0.1:5432/ws_logs?sslmode=disable
 	DBDSN string
 }
 
+// DefaultLog 는 sample.env 기본과 동일한 로그 설정을 반환합니다.
+//
+// Returns:
+//   - LogConfig: file 모드 + sqlite DSN 기본값
 func DefaultLog() LogConfig {
 	return LogConfig{
 		SystemMode: LogModeFile,
@@ -51,6 +66,11 @@ func DefaultLog() LogConfig {
 	}
 }
 
+// LoadLog 는 OS 환경변수에서 LogConfig 를 읽고 Validate 합니다.
+//
+// Returns:
+//   - LogConfig: 로드된 설정
+//   - error: 모드/파일/드라이버/DSN 검증 실패
 func LoadLog() (LogConfig, error) {
 	d := DefaultLog()
 	c := LogConfig{
@@ -64,7 +84,13 @@ func LoadLog() (LogConfig, error) {
 	return c, c.Validate()
 }
 
-// NormalizeLogDBDriver maps aliases to canonical driver names.
+// NormalizeLogDBDriver 는 드라이버 별칭을 정규 이름으로 매핑합니다.
+//
+// Parameters:
+//   - raw: 사용자 입력 드라이버 문자열
+//
+// Returns:
+//   - string: sqlite | mysql | postgres 또는 lower-trim 원본
 func NormalizeLogDBDriver(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "sqlite", "sqlite3":
@@ -78,6 +104,10 @@ func NormalizeLogDBDriver(raw string) string {
 	}
 }
 
+// Validate 는 로그 모드·파일 경로·DB 드라이버/DSN 을 검사합니다.
+//
+// Returns:
+//   - error: 위반 시 설명 메시지
 func (c LogConfig) Validate() error {
 	if err := validateLogMode("SYSTEM_LOG_MODE", c.SystemMode); err != nil {
 		return err
@@ -104,6 +134,11 @@ func (c LogConfig) Validate() error {
 	return nil
 }
 
+// validateLogMode 는 off|file|db 인지 확인합니다.
+//
+// Parameters:
+//   - name: 오류 메시지용 변수명
+//   - mode: 검사할 모드 값
 func validateLogMode(name, mode string) error {
 	switch mode {
 	case LogModeOff, LogModeFile, LogModeDB:
@@ -113,7 +148,10 @@ func validateLogMode(name, mode string) error {
 	}
 }
 
-// NeedsDB is true if any sink uses the database.
+// NeedsDB 는 시스템 또는 액세스가 db 모드이면 true 입니다.
+//
+// Returns:
+//   - bool: DB 연결이 필요하면 true
 func (c LogConfig) NeedsDB() bool {
 	return c.SystemMode == LogModeDB || c.AccessMode == LogModeDB
 }

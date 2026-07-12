@@ -1,3 +1,7 @@
+// Package server 는 TCP 위 WebSocket 실시간 허브입니다.
+//
+// 파이프라인: 수신 → JSON Envelope → 확장 훅 → 라우팅(join/send/…) → 송신.
+// 이 저장소에는 클라이언트 앱이 없으며, 외부 프로그램이 JSON 으로 접속합니다.
 package server
 
 import (
@@ -11,8 +15,9 @@ import (
 	"github.com/jhh78/ws-server/logging"
 )
 
-// Server is a receive → JSON → process → deliver WebSocket server.
-// No client application is shipped; external programs connect with JSON Envelopes.
+// Server 는 수신 → JSON → 처리 → 전달 WebSocket 서버입니다.
+//
+// 클라이언트 애플리케이션은 포함되지 않으며, 외부 프로그램이 Envelope JSON 으로 연결합니다.
 type Server struct {
 	name     string
 	cfg      config.AppConfig
@@ -21,7 +26,14 @@ type Server struct {
 	upgrader websocket.Upgrader
 }
 
-// New creates a Server and opens log sinks from cfg.Log.
+// New 는 서버를 생성하고 cfg.Log 에 따라 로그 싱크를 엽니다.
+//
+// Parameters:
+//   - cfg: 검증된 AppConfig
+//
+// Returns:
+//   - *Server: 기동 가능한 서버
+//   - error: 로그 싱크 오픈 실패
 func New(cfg config.AppConfig) (*Server, error) {
 	lg, err := logging.New(cfg.Log)
 	if err != nil {
@@ -45,12 +57,18 @@ func New(cfg config.AppConfig) (*Server, error) {
 	return s, nil
 }
 
-// Logger exposes the logger for tests / extensions.
+// Logger 는 테스트·확장용 로거를 노출합니다.
+//
+// Returns:
+//   - *logging.Logger: 서버 소유 로거
 func (s *Server) Logger() *logging.Logger {
 	return s.log
 }
 
-// Close closes log sinks.
+// Close 는 로그 싱크를 닫습니다.
+//
+// Returns:
+//   - error: 로거 Close 오류
 func (s *Server) Close() error {
 	if s == nil {
 		return nil
@@ -58,6 +76,13 @@ func (s *Server) Close() error {
 	return s.log.Close()
 }
 
+// checkOrigin 은 ALLOW_ORIGINS 에 따라 브라우저 Origin 을 허용합니다.
+//
+// Parameters:
+//   - r: 업그레이드 HTTP 요청
+//
+// Returns:
+//   - bool: 허용 여부 (* 또는 목록 일치)
 func (s *Server) checkOrigin(r *http.Request) bool {
 	allow := strings.TrimSpace(s.cfg.AllowOrigins)
 	if allow == "" || allow == "*" {
@@ -72,6 +97,11 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 	return false
 }
 
+// wsHandler 는 HTTP→WebSocket 업그레이드 후 클라이언트를 등록하고 펌프를 시작합니다.
+//
+// Parameters:
+//   - w: 응답 작성기
+//   - r: 업그레이드 요청
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -111,12 +141,21 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	client.readPump()
 }
 
+// healthHandler 는 plain "OK" 헬스 응답을 반환합니다.
+//
+// Parameters:
+//   - w: 응답 작성기
+//   - r: 요청 (미사용)
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
 }
 
+// NewMux 는 WS_PATH / HEALTH_PATH 핸들러가 등록된 ServeMux 를 만듭니다.
+//
+// Returns:
+//   - *http.ServeMux: 라우팅 테이블
 func (s *Server) NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc(s.cfg.WSPath, s.wsHandler)
@@ -124,11 +163,18 @@ func (s *Server) NewMux() *http.ServeMux {
 	return mux
 }
 
+// Hub 는 멤버십 허브 참조를 반환합니다 (테스트용).
+//
+// Returns:
+//   - *Hub: 서버 소유 허브
 func (s *Server) Hub() *Hub {
 	return s.hub
 }
 
-// ListenAndServe binds TCP and serves HTTP/WebSocket (RFC 6455 upgrade path).
+// ListenAndServe 는 TCP 를 바인드하고 HTTP/WebSocket 을 서빙합니다 (RFC 6455 업그레이드).
+//
+// Returns:
+//   - error: Listen 또는 Serve 실패 (정상 블로킹 시 반환 안 함)
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen(s.cfg.Network, s.cfg.ListenAddr)
 	if err != nil {

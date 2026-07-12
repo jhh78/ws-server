@@ -9,6 +9,13 @@ import (
 	"github.com/jhh78/ws-server/config"
 )
 
+// projectRoot 는 저장소 루트 경로를 반환합니다 (이 파일 기준 상위).
+//
+// Parameters:
+//   - t: testing.T
+//
+// Returns:
+//   - string: 절대 경로에 가까운 정리된 루트
 func projectRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -18,6 +25,10 @@ func projectRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), ".."))
 }
 
+// clearConfigEnv 는 테스트 간 오염을 막기 위해 주요 설정 OS env 를 Unset 합니다.
+//
+// Parameters:
+//   - t: testing.T
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	keys := []string{
@@ -30,6 +41,7 @@ func clearConfigEnv(t *testing.T) {
 	}
 }
 
+// TestLoadSampleEnv 는 커밋된 sample.env 가 로드·검증되는지 확인합니다.
 func TestLoadSampleEnv(t *testing.T) {
 	clearConfigEnv(t)
 	root := projectRoot(t)
@@ -51,6 +63,7 @@ func TestLoadSampleEnv(t *testing.T) {
 	}
 }
 
+// TestCopySampleToDotEnv 는 sample.env → 임시 .env 복사 후 Load 를 검증합니다.
 func TestCopySampleToDotEnv(t *testing.T) {
 	clearConfigEnv(t)
 	root := projectRoot(t)
@@ -71,6 +84,7 @@ func TestCopySampleToDotEnv(t *testing.T) {
 	}
 }
 
+// TestPartialEnvUsesDefaults 는 일부 키만 있을 때 Default 가 채워지는지 확인합니다.
 func TestPartialEnvUsesDefaults(t *testing.T) {
 	clearConfigEnv(t)
 	dir := t.TempDir()
@@ -91,6 +105,7 @@ func TestPartialEnvUsesDefaults(t *testing.T) {
 	}
 }
 
+// TestInvalidIntegerFails 는 잘못된 정수 env 가 Load 오류를 내는지 확인합니다.
 func TestInvalidIntegerFails(t *testing.T) {
 	clearConfigEnv(t)
 	path := filepath.Join(t.TempDir(), ".env")
@@ -102,6 +117,7 @@ func TestInvalidIntegerFails(t *testing.T) {
 	}
 }
 
+// TestOSEnvOverridesFile 은 이미 설정된 OS env 가 파일 값보다 우선함을 검증합니다.
 func TestOSEnvOverridesFile(t *testing.T) {
 	clearConfigEnv(t)
 	path := filepath.Join(t.TempDir(), ".env")
@@ -118,6 +134,7 @@ func TestOSEnvOverridesFile(t *testing.T) {
 	}
 }
 
+// TestRejectNonTCP 는 NETWORK=udp 등 비 TCP 를 Validate 가 거절하는지 확인합니다.
 func TestRejectNonTCP(t *testing.T) {
 	c := config.Default()
 	c.Network = "udp"
@@ -126,6 +143,7 @@ func TestRejectNonTCP(t *testing.T) {
 	}
 }
 
+// TestLoadEmptyUsesDefaults 는 path="" 일 때 Default 기반 로드를 검증합니다.
 func TestLoadEmptyUsesDefaults(t *testing.T) {
 	clearConfigEnv(t)
 	cfg, err := config.Load("")

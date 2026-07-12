@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 )
 
-// routeInbound dispatches a parsed Envelope to membership / delivery handlers.
-// Core server responsibility: receive JSON → (extension) → route → respond.
+// routeInbound 은 파싱된 Envelope 를 멤버십·전달 핸들러로 디스패치합니다.
+//
+// 서버 핵심: 수신 JSON → (extension) → route → 응답.
+//
+// Parameters:
+//   - msg: 인바운드 Envelope (nil 아님 가정)
 func (c *Client) routeInbound(msg *Envelope) {
 	switch msg.Type {
 	case "join":
@@ -28,6 +32,14 @@ func (c *Client) routeInbound(msg *Envelope) {
 	}
 }
 
+// applyNameFromPayload 는 join payload 에서 표시 이름을 설정합니다.
+//
+// 지원 형식:
+//   - JSON 문자열: "Alice"
+//   - 객체: { "name": "Alice" }
+//
+// Parameters:
+//   - payload: Envelope.Payload
 func (c *Client) applyNameFromPayload(payload json.RawMessage) {
 	if len(payload) == 0 {
 		return
@@ -45,6 +57,10 @@ func (c *Client) applyNameFromPayload(payload json.RawMessage) {
 	}
 }
 
+// routeJoin 은 scope=area|channel 가입을 처리하고 joined + system 알림을 보냅니다.
+//
+// Parameters:
+//   - msg: type=join Envelope
 func (c *Client) routeJoin(msg *Envelope) {
 	c.applyNameFromPayload(msg.Payload)
 
@@ -103,6 +119,10 @@ func (c *Client) routeJoin(msg *Envelope) {
 	}
 }
 
+// routeLeave 는 에리어/채널 탈퇴를 처리하고 left + system 을 보냅니다.
+//
+// Parameters:
+//   - msg: type=leave Envelope
 func (c *Client) routeLeave(msg *Envelope) {
 	switch msg.Scope {
 	case ScopeArea, "":
@@ -141,6 +161,10 @@ func (c *Client) routeLeave(msg *Envelope) {
 	}
 }
 
+// routeSend 는 멤버십을 검사한 뒤 message 를 브로드캐스트합니다 (본인 에코 포함).
+//
+// Parameters:
+//   - msg: type=send Envelope
 func (c *Client) routeSend(msg *Envelope) {
 	if msg.Target == "" {
 		c.replyError("target is required", msg.Scope, "")
@@ -195,6 +219,10 @@ func (c *Client) routeSend(msg *Envelope) {
 	}
 }
 
+// routeWhisper 는 to=client_id 로 1:1 메시지를 전달하고 발신자에게 에코합니다.
+//
+// Parameters:
+//   - msg: type=whisper Envelope
 func (c *Client) routeWhisper(msg *Envelope) {
 	if msg.To == "" {
 		c.replyError("to (client_id) is required for whisper", "", "")
@@ -221,7 +249,10 @@ func (c *Client) routeWhisper(msg *Envelope) {
 	c.trySend(raw)
 }
 
-// reply sends an Envelope to this client (through outbound extension).
+// reply 는 Envelope 를 이 클라이언트에게 보냅니다 (아웃바운드 확장 통과).
+//
+// Parameters:
+//   - msg: 송신할 Envelope
 func (c *Client) reply(msg Envelope) {
 	out, drop := extProcessOutbound(c, &msg)
 	if drop || out == nil {
@@ -234,6 +265,12 @@ func (c *Client) reply(msg Envelope) {
 	c.trySend(raw)
 }
 
+// replyError 는 type=error Envelope 를 보냅니다.
+//
+// Parameters:
+//   - errMsg: 오류 요약
+//   - scope: 관련 scope
+//   - target: 관련 target
 func (c *Client) replyError(errMsg, scope, target string) {
 	c.reply(Envelope{
 		Type:   "error",
