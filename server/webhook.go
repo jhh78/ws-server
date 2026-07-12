@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -14,38 +16,35 @@ import (
 // 이 서버는 비즈니스 로직 없이 중계만 하며, 외부 시스템은 웹훅으로 관찰·후처리합니다.
 // URL 이 없으면 모든 Post 는 no-op 입니다. POST 는 고루틴에서 비동기로 수행되어
 // WebSocket 중계 경로를 블로킹하지 않습니다.
+// 타임아웃 설정은 두지 않으며, 전송 성공·실패 결과를 로그에 기록합니다.
 type Webhook struct {
 	// URLs 는 POST 대상 (하나 이상).
 	URLs []string
 	// ServerName 은 페이로드 server 필드.
 	ServerName string
-	// HTTP 는 타임아웃이 설정된 클라이언트.
+	// HTTP 는 요청에 쓰는 클라이언트 (타임아웃 미설정).
 	HTTP *http.Client
-	// Log 는 POST 실패 시 경고 (nil 허용).
+	// Log 는 POST 결과 기록 (nil 허용).
 	Log *logging.Logger
 }
 
-// NewWebhook 은 URL 목록과 타임아웃으로 Webhook 을 만듭니다.
+// NewWebhook 은 URL 목록으로 Webhook 을 만듭니다.
 //
 // Parameters:
 //   - urls: WEBHOOK_URL 파싱 결과 (비어 있으면 nil 반환)
-//   - timeoutMs: HTTP 클라이언트 타임아웃 (0 이하면 5000)
 //   - serverName: 페이로드 식별명
 //   - lg: 로거 (선택)
 //
 // Returns:
 //   - *Webhook: 활성 디스패처, urls 없으면 nil
-func NewWebhook(urls []string, timeoutMs int, serverName string, lg *logging.Logger) *Webhook {
+func NewWebhook(urls []string, serverName string, lg *logging.Logger) *Webhook {
 	if len(urls) == 0 {
 		return nil
-	}
-	if timeoutMs <= 0 {
-		timeoutMs = 5000
 	}
 	return &Webhook{
 		URLs:       append([]string(nil), urls...),
 		ServerName: serverName,
-		HTTP:       &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond},
+		HTTP:       &http.Client{}, // 타임아웃 없음 — 결과는 로그로 남김
 		Log:        lg,
 	}
 }
@@ -208,38 +207,81 @@ func (w *Webhook) Post(event string, c *Client, msg *Envelope) {
 	}
 	body, err := json.Marshal(p)
 	if err != nil {
+		w.logResult("error", "marshal failed", err.Error(), "", event, 0)
 		return
 	}
 	// 중계 경로 비차단
-	go w.deliver(body)
+	go w.deliver(event, body)
 }
 
-// deliver 는 모든 URL 에 동일 본문을 POST 합니다.
+// deliver 는 모든 URL 에 동일 본문을 POST 하고 결과를 로그에 남깁니다.
 //
 // Parameters:
+//   - event: 이벤트 이름 (로그용)
 //   - body: JSON 바이트
-func (w *Webhook) deliver(body []byte) {
+func (w *Webhook) deliver(event string, body []byte) {
 	for _, u := range w.URLs {
 		req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(body))
 		if err != nil {
-			if w.Log != nil {
-				w.Log.Warn("webhook", "new request failed", err.Error(), "url="+u)
-			}
+			w.logResult("error", "new request failed", err.Error(), u, event, 0)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 		req.Header.Set("User-Agent", "ws-server-webhook/1")
+
+		start := time.Now()
 		resp, err := w.HTTP.Do(req)
+		elapsed := time.Since(start)
 		if err != nil {
-			if w.Log != nil {
-				w.Log.Warn("webhook", "post failed", err.Error(), "url="+u)
-			}
+			w.logResult("error", "post failed", err.Error(), u, event, elapsed)
 			continue
 		}
+		// drain body so connection can be reused
+		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
-		if resp.StatusCode >= 400 && w.Log != nil {
-			w.Log.Warn("webhook", "non-2xx response",
-				"status="+resp.Status, "url="+u)
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			w.logResult("ok", "post ok",
+				fmt.Sprintf("status=%d", resp.StatusCode), u, event, elapsed)
+		} else {
+			w.logResult("warn", "non-2xx response",
+				fmt.Sprintf("status=%d", resp.StatusCode), u, event, elapsed)
 		}
+	}
+}
+
+// logResult 는 웹훅 전송 결과를 시스템 로그에 기록합니다.
+//
+// Parameters:
+//   - level: ok | warn | error
+//   - message: 요약
+//   - detail: 부가 정보
+//   - url: 대상 URL
+//   - event: 이벤트 이름
+//   - elapsed: 소요 시간 (0 이면 생략)
+func (w *Webhook) logResult(level, message, detail, url, event string, elapsed time.Duration) {
+	if w == nil || w.Log == nil {
+		return
+	}
+	parts := []string{}
+	if event != "" {
+		parts = append(parts, "event="+event)
+	}
+	if url != "" {
+		parts = append(parts, "url="+url)
+	}
+	if detail != "" {
+		parts = append(parts, detail)
+	}
+	if elapsed > 0 {
+		parts = append(parts, fmt.Sprintf("elapsed=%s", elapsed.Round(time.Millisecond)))
+	}
+	switch level {
+	case "ok":
+		w.Log.Info("webhook", message, parts...)
+	case "warn":
+		w.Log.Warn("webhook", message, parts...)
+	default:
+		w.Log.Error("webhook", message, parts...)
 	}
 }

@@ -41,7 +41,7 @@ func New(cfg config.AppConfig) (*Server, error) {
 		return nil, err
 	}
 	hub := NewHub(cfg.AreaConfig(), cfg.ChannelConfig())
-	wh := NewWebhook(cfg.WebhookURLs(), cfg.WebhookTimeoutMs, cfg.ServerName, lg)
+	wh := NewWebhook(cfg.WebhookURLs(), cfg.ServerName, lg)
 	hub.SetWebhook(wh)
 
 	s := &Server{
@@ -60,10 +60,7 @@ func New(cfg config.AppConfig) (*Server, error) {
 		"access_mode="+cfg.Log.AccessMode,
 	)
 	if wh != nil {
-		lg.Info("server", "webhook enabled",
-			fmt.Sprintf("urls=%d", len(wh.URLs)),
-			fmt.Sprintf("timeout_ms=%d", cfg.WebhookTimeoutMs),
-		)
+		lg.Info("server", "webhook enabled", fmt.Sprintf("urls=%d", len(wh.URLs)))
 	} else {
 		lg.Info("server", "webhook disabled", "WEBHOOK_URL empty")
 	}

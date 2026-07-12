@@ -37,7 +37,6 @@ func TestWebhookReceivesConnectAndJoin(t *testing.T) {
 
 	cfg := testConfig(t)
 	cfg.WebhookURL = `["` + hook.URL + `"]`
-	cfg.WebhookTimeoutMs = 2000
 
 	ts := httptest.NewServer(newTestServer(t, cfg).NewMux())
 	t.Cleanup(ts.Close)

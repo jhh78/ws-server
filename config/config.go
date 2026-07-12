@@ -40,8 +40,7 @@ var KnownKeys = map[string]struct{}{
 	"LOG_DB_DRIVER":   {},
 	"LOG_DB_DSN":      {},
 	// webhook (optional event POST; empty = off)
-	"WEBHOOK_URL":        {},
-	"WEBHOOK_TIMEOUT_MS": {},
+	"WEBHOOK_URL": {},
 }
 
 // AppConfig 는 실시간 서버의 전체 런타임 설정입니다.
@@ -87,8 +86,6 @@ type AppConfig struct {
 	// WebhookURL 은 이벤트 알림 POST 대상 (비어 있으면 비활성).
 	// 형식은 JSON 배열 문자열만 허용: ["https://a/h","https://b/h"]
 	WebhookURL string
-	// WebhookTimeoutMs 는 각 POST 타임아웃(밀리초). 0 이하면 기본 5000.
-	WebhookTimeoutMs int
 
 	// Extra 는 파일/OS 의 알 수 없는 키 값입니다 (호환 확장용).
 	Extra map[string]string
@@ -112,10 +109,9 @@ func Default() AppConfig {
 		MaxAreas:             10000,
 		MaxChannels:          20000,
 		MaxClientsPerChannel: 200,
-		Log:                  DefaultLog(),
-		WebhookURL:           "",
-		WebhookTimeoutMs:     5000,
-		Extra:                map[string]string{},
+		Log:        DefaultLog(),
+		WebhookURL: "",
+		Extra:      map[string]string{},
 	}
 }
 
@@ -170,9 +166,6 @@ func Load(path string) (AppConfig, error) {
 	}
 
 	c.WebhookURL = envString("WEBHOOK_URL", c.WebhookURL)
-	if c.WebhookTimeoutMs, err = envIntStrict("WEBHOOK_TIMEOUT_MS", c.WebhookTimeoutMs); err != nil {
-		return AppConfig{}, err
-	}
 
 	for k, v := range st.fromFile {
 		if _, known := KnownKeys[k]; !known {
@@ -221,9 +214,6 @@ func (c AppConfig) Validate() error {
 	}
 	if c.MaxClientsPerArea < 0 || c.MaxAreas < 0 || c.MaxChannels < 0 || c.MaxClientsPerChannel < 0 {
 		return fmt.Errorf("limit values must be >= 0")
-	}
-	if c.WebhookTimeoutMs < 0 {
-		return fmt.Errorf("WEBHOOK_TIMEOUT_MS must be >= 0")
 	}
 	if _, err := ParseWebhookURLs(c.WebhookURL); err != nil {
 		return err

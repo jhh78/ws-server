@@ -150,7 +150,6 @@ cp sample.env .env
 | `MAX_CHANNELS` | `20000` | 동시 채널 수 (`0` = 무제한) |
 | `MAX_CLIENTS_PER_CHANNEL` | `200` | 채널당 최대 인원 (`0` = 무제한) |
 | `WEBHOOK_URL` | (빈 값) | JSON 배열만. 예 `["https://a/h","https://b/h"]` (비우면 비활성) |
-| `WEBHOOK_TIMEOUT_MS` | `5000` | 웹훅 HTTP 타임아웃(ms) |
 
 #### 로그 (시스템 / 액세스)
 
@@ -360,7 +359,6 @@ interface Envelope {
 | 변수 | 설명 |
 |------|------|
 | `WEBHOOK_URL` | JSON 배열 문자열만. 비우거나 `[]` 이면 끔 |
-| `WEBHOOK_TIMEOUT_MS` | POST 타임아웃 (기본 5000) |
 
 **`WEBHOOK_URL` 형식 (통일)**
 
@@ -374,7 +372,7 @@ WEBHOOK_URL=
 
 **요청:** `POST` · `Content-Type: application/json; charset=utf-8` · `User-Agent: ws-server-webhook/1`  
 **POST 시점:** `connect`, `disconnect`, `join`, `leave`, `send`, `whisper`, `ping`  
-(비동기 — 실패해도 WS 중계 계속)
+(비동기 — 실패해도 WS 중계 계속. 타임아웃 설정 없음. 전송 결과는 시스템 로그 `webhook` 컴포넌트에 기록)
 
 **공통 스키마 (`WebhookPayload`)**
 
