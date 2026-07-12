@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 )
 
-// routeInbound 은 파싱된 Envelope 를 멤버십·전달 핸들러로 디스패치합니다.
+// routeInbound 은 파싱된 Envelope 를 멤버십·중계 핸들러로 디스패치합니다.
 //
-// 서버 핵심: 수신 JSON → (extension) → route → 응답.
+// 서버 핵심: 수신 JSON → route/중계 → 응답 (+ 웹훅 알림).
 //
 // Parameters:
 //   - msg: 인바운드 Envelope (nil 아님 가정)
@@ -249,7 +249,7 @@ func (c *Client) routeWhisper(msg *Envelope) {
 	c.trySend(raw)
 }
 
-// reply 는 Envelope 를 이 클라이언트에게 보냅니다 (아웃바운드 확장 통과).
+// reply 는 Envelope 를 이 클라이언트에게 보냅니다 (아웃바운드 훅은 통과만).
 //
 // Parameters:
 //   - msg: 송신할 Envelope

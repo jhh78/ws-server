@@ -13,6 +13,8 @@ import (
 type Hub struct {
 	area    config.AreaLimits
 	channel config.ChannelLimits
+	// webhook 은 env WEBHOOK_URL 이 있을 때 이벤트 POST (nil 이면 비활성).
+	webhook *Webhook
 
 	mu       sync.RWMutex
 	clients  map[string]*Client
@@ -36,6 +38,14 @@ func NewHub(area config.AreaLimits, ch config.ChannelLimits) *Hub {
 		areas:    make(map[string]map[*Client]struct{}),
 		channels: make(map[string]map[*Client]struct{}),
 	}
+}
+
+// SetWebhook 은 선택적 웹훅 디스패처를 연결합니다.
+//
+// Parameters:
+//   - w: nil 이면 웹훅 비활성
+func (h *Hub) SetWebhook(w *Webhook) {
+	h.webhook = w
 }
 
 // channelKey 는 채널 맵 키를 만듭니다.

@@ -161,7 +161,7 @@ func (c *Client) readPump() {
 //
 // 처리 단계:
 //  1. JSON → Envelope
-//  2. extProcessInbound
+//  2. extProcessInbound (중계 통과)
 //  3. routeInbound
 //
 // Parameters:
@@ -180,12 +180,9 @@ func (c *Client) onReceive(data []byte) {
 		return
 	}
 
-	// 2) extension: business / filter (stub by default)
+	// 2) 중계 전용 훅 (변조/드롭 없음)
 	processed, drop := extProcessInbound(c, &msg)
-	if drop {
-		return
-	}
-	if processed == nil {
+	if drop || processed == nil {
 		return
 	}
 

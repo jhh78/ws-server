@@ -30,7 +30,8 @@
 
 ## 1. 메인 기능·파이프라인
 
-서버의 역할은 **수신 → JSON 처리 → (확장) → 라우팅/중계 → 응답** 입니다.
+서버의 역할은 **수신 → JSON 파싱 → 라우팅/중계 → 응답** 입니다.  
+비즈니스 로직(인증·필터 등)은 넣지 않으며, 필요 시 **웹훅**으로 외부에 알립니다.
 
 ```
 외부 클라이언트 (별도 프로그램)
@@ -45,7 +46,7 @@
 │  message.go  JSON ↔ Envelope                          │
 │       │                                               │
 │       ▼                                               │
-│  extension.go  빈 훅 (인증·필터·로그 등 확장 지점)      │
+│  extension.go  로그 + (WEBHOOK_URL 시) 비동기 POST    │
 │       │                                               │
 │       ▼                                               │
 │  route.go    join / leave / send / whisper / ping     │
@@ -53,6 +54,9 @@
 │       ▼                                               │
 │  hub.go      에리어·채널 멤버십, 브로드캐스트, 1:1      │
 └───────────────────────────────────────────────────────┘
+        │  WEBHOOK_URL 설정 시
+        ▼
+  외부 HTTP 엔드포인트 (JSON POST, best-effort)
 ```
 
 | 단계 | 파일 | 설명 |
@@ -60,9 +64,9 @@
 | Listen / Upgrade | `server/server.go` | TCP 바인드, HTTP→WS 업그레이드, 헬스 |
 | 수신·송신 | `server/client.go` | `onReceive` 파이프라인, write 큐 |
 | JSON 규격 | `server/message.go` | `Envelope` |
-| 라우팅 | `server/route.go` | type 별 처리·응답 |
+| 라우팅 | `server/route.go` | type 별 중계·응답 |
 | 멤버십 | `server/hub.go` | area / channel 집합 |
-| **확장** | `server/extension.go` | **빈 함수** — 비즈니스 로직 연결점 |
+| 로그·웹훅 | `server/extension.go`, `webhook.go` | 액세스/시스템 로그, 선택적 이벤트 POST |
 | 설정 | `config/` | `.env` 로드 |
 | 진입점 | `cmd/ws-server/` | `-env`, `-addr` |
 
@@ -145,6 +149,8 @@ cp sample.env .env
 | `MAX_AREAS` | `10000` | 동시 에리어 수 (`0` = 무제한) |
 | `MAX_CHANNELS` | `20000` | 동시 채널 수 (`0` = 무제한) |
 | `MAX_CLIENTS_PER_CHANNEL` | `200` | 채널당 최대 인원 (`0` = 무제한) |
+| `WEBHOOK_URL` | (빈 값) | 이벤트 POST URL. 비우면 비활성. 여러 개면 쉼표 구분 |
+| `WEBHOOK_TIMEOUT_MS` | `5000` | 웹훅 HTTP 타임아웃(ms) |
 
 #### 로그 (시스템 / 액세스)
 
@@ -343,35 +349,177 @@ interface Envelope {
 기타:
 
 - 유효하지 않은 JSON 키 조합은 라우팅 단계에서 거부됩니다.
-- `extProcessInbound` / `extProcessOutbound` 가 `drop=true` 를 반환하면 **무응답 드롭** 가능(확장 구현 시 주의).
+- 인바운드/아웃바운드 훅은 **중계 전용 통과**이며 메시지 드롭·변조를 하지 않습니다.
 
 ---
 
-## 7. 확장 훅
+## 7. 웹훅 (선택)
 
-파일: **`server/extension.go`**
+이 서버는 **중계 전용**입니다. 외부 백엔드가 이벤트를 받으려면 `sample.env` 의 `WEBHOOK_URL` 을 설정하세요.
 
-메인 루프는 고정이고, 부가 처리는 훅 본문만 채우면 됩니다.  
-같은 `package server` 의 새 파일(예: `auth.go`, `filter.go`)에 로직을 두고 훅에서 호출하는 방식을 권장합니다.
+| 변수 | 설명 |
+|------|------|
+| `WEBHOOK_URL` | 비어 있으면 끔. `https://...` 한 개 또는 쉼표로 여러 개 |
+| `WEBHOOK_TIMEOUT_MS` | POST 타임아웃 (기본 5000) |
 
-| 함수 | 호출 시점 | 용도 예 |
-|------|-----------|---------|
-| `extOnConnect` | Hub 등록 직후, `welcome` 전 | 접속 로그, 세션 시작 |
-| `extOnDisconnect` | 종료 처리 직전 | 세션 정리, 오프라인 알림 |
-| `extProcessInbound` | JSON 파싱 후, 라우팅 전 | 권한, payload 변환, 커스텀 type |
-| `extProcessOutbound` | 송신 큐 직전 | 필터, 검열, 감사 로그 |
-| `extOnRouted` | join/send 등 라우팅 완료 후 | 메트릭, 비동기 후처리 |
+**요청:** `POST` · `Content-Type: application/json; charset=utf-8` · `User-Agent: ws-server-webhook/1`  
+**POST 시점:** `connect`, `disconnect`, `join`, `leave`, `send`, `whisper`, `ping`  
+(비동기 — 실패해도 WS 중계 계속)
 
-시그니처 요지:
+**공통 스키마 (`WebhookPayload`)**
 
-```go
-func extProcessInbound(c *Client, msg *Envelope) (out *Envelope, drop bool)
-func extProcessOutbound(c *Client, msg *Envelope) (out *Envelope, drop bool)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `event` | string | 이벤트 이름 |
+| `ts` | number | Unix 밀리초 |
+| `server` | string | `SERVER_NAME` |
+| `client_id` | string | 서버 발급 연결 ID |
+| `remote_addr` | string | 피어 주소 |
+| `envelope` | object? | 인바운드 `Envelope` 스냅샷. `connect`/`disconnect` 에는 없음 |
+
+코드 상수: `server/webhook.go` 의 `WebhookSample*` (런타임 미사용, 문서·수신 측 참고용).
+
+### 7.1 샘플 — connect
+
+```json
+{
+  "event": "connect",
+  "ts": 1710000000000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321"
+}
 ```
 
-- `drop == true`: 이후 단계 생략 (필요 시 훅 안에서 `c.reply` 로 에러 전송 가능 — `reply` 는 package 내부 API)
-- `out` 으로 수정된 `Envelope` 전달 가능
-- 기본 구현: **통과** (`return msg, false`)
+### 7.2 샘플 — disconnect
+
+```json
+{
+  "event": "disconnect",
+  "ts": 1710000005000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321"
+}
+```
+
+### 7.3 샘플 — join (area)
+
+```json
+{
+  "event": "join",
+  "ts": 1710000001000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "join",
+    "scope": "area",
+    "target": "lobby",
+    "payload": { "name": "Alice" }
+  }
+}
+```
+
+### 7.4 샘플 — join (channel / party)
+
+```json
+{
+  "event": "join",
+  "ts": 1710000001100,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "join",
+    "scope": "channel",
+    "channel_kind": "party",
+    "target": "party-42",
+    "payload": { "name": "Alice" }
+  }
+}
+```
+
+### 7.5 샘플 — leave
+
+```json
+{
+  "event": "leave",
+  "ts": 1710000002000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "leave",
+    "scope": "area",
+    "target": "lobby"
+  }
+}
+```
+
+### 7.6 샘플 — send
+
+```json
+{
+  "event": "send",
+  "ts": 1710000003000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "send",
+    "scope": "area",
+    "target": "lobby",
+    "payload": { "text": "hello", "x": 1, "y": 2 }
+  }
+}
+```
+
+### 7.7 샘플 — whisper
+
+```json
+{
+  "event": "whisper",
+  "ts": 1710000004000,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "whisper",
+    "to": "c2",
+    "payload": { "text": "secret" }
+  }
+}
+```
+
+### 7.8 샘플 — ping
+
+```json
+{
+  "event": "ping",
+  "ts": 1710000004500,
+  "server": "ws-server",
+  "client_id": "c1",
+  "remote_addr": "203.0.113.10:54321",
+  "envelope": {
+    "type": "ping"
+  }
+}
+```
+
+| 코드 상수 | 이벤트 |
+|-----------|--------|
+| `WebhookSampleConnect` | connect |
+| `WebhookSampleDisconnect` | disconnect |
+| `WebhookSampleJoinArea` | join (area) |
+| `WebhookSampleJoinChannel` | join (channel) |
+| `WebhookSampleLeave` | leave |
+| `WebhookSampleSend` | send |
+| `WebhookSampleWhisper` | whisper |
+| `WebhookSamplePing` | ping |
+
+- 구현: `server/webhook.go`, 호출: `server/extension.go`
+- 인증·저장·푸시 등 **비즈니스는 웹훅 수신 측**에서 처리
 
 ---
 

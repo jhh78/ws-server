@@ -1,10 +1,11 @@
-// Package server 는 TCP 위 WebSocket 실시간 허브입니다.
+// Package server 는 TCP 위 WebSocket 실시간 중계 허브입니다.
 //
-// 파이프라인: 수신 → JSON Envelope → 확장 훅 → 라우팅(join/send/…) → 송신.
-// 이 저장소에는 클라이언트 앱이 없으며, 외부 프로그램이 JSON 으로 접속합니다.
+// 파이프라인: 수신 → JSON Envelope → (로그·선택 웹훅) → 라우팅/중계 → 송신.
+// 비즈니스 로직은 두지 않으며, WEBHOOK_URL 이 있으면 이벤트를 외부로 POST 합니다.
 package server
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 	"github.com/jhh78/ws-server/logging"
 )
 
-// Server 는 수신 → JSON → 처리 → 전달 WebSocket 서버입니다.
+// Server 는 수신 → JSON → 중계 → 전달 WebSocket 서버입니다.
 //
 // 클라이언트 애플리케이션은 포함되지 않으며, 외부 프로그램이 Envelope JSON 으로 연결합니다.
 type Server struct {
@@ -26,7 +27,7 @@ type Server struct {
 	upgrader websocket.Upgrader
 }
 
-// New 는 서버를 생성하고 cfg.Log 에 따라 로그 싱크를 엽니다.
+// New 는 서버를 생성하고 로그 싱크·선택적 웹훅을 연결합니다.
 //
 // Parameters:
 //   - cfg: 검증된 AppConfig
@@ -39,11 +40,15 @@ func New(cfg config.AppConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	hub := NewHub(cfg.AreaConfig(), cfg.ChannelConfig())
+	wh := NewWebhook(cfg.WebhookURLs(), cfg.WebhookTimeoutMs, cfg.ServerName, lg)
+	hub.SetWebhook(wh)
+
 	s := &Server{
 		name: cfg.ServerName,
 		cfg:  cfg,
 		log:  lg,
-		hub:  NewHub(cfg.AreaConfig(), cfg.ChannelConfig()),
+		hub:  hub,
 	}
 	s.upgrader = websocket.Upgrader{
 		ReadBufferSize:  cfg.ReadBufferSize,
@@ -54,6 +59,14 @@ func New(cfg config.AppConfig) (*Server, error) {
 		"system_mode="+cfg.Log.SystemMode,
 		"access_mode="+cfg.Log.AccessMode,
 	)
+	if wh != nil {
+		lg.Info("server", "webhook enabled",
+			fmt.Sprintf("urls=%d", len(wh.URLs)),
+			fmt.Sprintf("timeout_ms=%d", cfg.WebhookTimeoutMs),
+		)
+	} else {
+		lg.Info("server", "webhook disabled", "WEBHOOK_URL empty")
+	}
 	return s, nil
 }
 

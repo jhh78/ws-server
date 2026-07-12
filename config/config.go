@@ -38,6 +38,9 @@ var KnownKeys = map[string]struct{}{
 	"ACCESS_LOG_FILE": {},
 	"LOG_DB_DRIVER":   {},
 	"LOG_DB_DSN":      {},
+	// webhook (optional event POST; empty = off)
+	"WEBHOOK_URL":        {},
+	"WEBHOOK_TIMEOUT_MS": {},
 }
 
 // AppConfig 는 실시간 서버의 전체 런타임 설정입니다.
@@ -80,6 +83,12 @@ type AppConfig struct {
 	// Log 는 시스템·액세스 로그 싱크 설정입니다.
 	Log LogConfig
 
+	// WebhookURL 은 이벤트 알림 POST 대상 (비어 있으면 비활성).
+	// 여러 URL 은 쉼표로 구분합니다.
+	WebhookURL string
+	// WebhookTimeoutMs 는 각 POST 타임아웃(밀리초). 0 이하면 기본 5000.
+	WebhookTimeoutMs int
+
 	// Extra 는 파일/OS 의 알 수 없는 키 값입니다 (호환 확장용).
 	Extra map[string]string
 }
@@ -103,6 +112,8 @@ func Default() AppConfig {
 		MaxChannels:          20000,
 		MaxClientsPerChannel: 200,
 		Log:                  DefaultLog(),
+		WebhookURL:           "",
+		WebhookTimeoutMs:     5000,
 		Extra:                map[string]string{},
 	}
 }
@@ -157,6 +168,11 @@ func Load(path string) (AppConfig, error) {
 		return AppConfig{}, fmt.Errorf("log: %w", err)
 	}
 
+	c.WebhookURL = envString("WEBHOOK_URL", c.WebhookURL)
+	if c.WebhookTimeoutMs, err = envIntStrict("WEBHOOK_TIMEOUT_MS", c.WebhookTimeoutMs); err != nil {
+		return AppConfig{}, err
+	}
+
 	for k, v := range st.fromFile {
 		if _, known := KnownKeys[k]; !known {
 			c.Extra[k] = v
@@ -205,7 +221,33 @@ func (c AppConfig) Validate() error {
 	if c.MaxClientsPerArea < 0 || c.MaxAreas < 0 || c.MaxChannels < 0 || c.MaxClientsPerChannel < 0 {
 		return fmt.Errorf("limit values must be >= 0")
 	}
+	if c.WebhookTimeoutMs < 0 {
+		return fmt.Errorf("WEBHOOK_TIMEOUT_MS must be >= 0")
+	}
 	return nil
+}
+
+// WebhookURLs 는 WEBHOOK_URL 을 쉼표로 나눈 비어 있지 않은 URL 목록을 반환합니다.
+//
+// Returns:
+//   - []string: 트림된 URL 들 (없으면 nil)
+func (c AppConfig) WebhookURLs() []string {
+	raw := strings.TrimSpace(c.WebhookURL)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // SetListenAddr 은 CLI -addr 로 LISTEN_ADDR 을 덮어씁니다.
