@@ -1,5 +1,9 @@
-# Active runtime config (copy a profile from configs/ into this file)
+# Active runtime config
 .env
+
+# Runtime logs / log database
+logs/
+*.log
 
 # Build artifacts
 ws-server

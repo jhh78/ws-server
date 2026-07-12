@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jhh78/ws-server/config"
+	"github.com/jhh78/ws-server/logging"
 )
 
 // Server is a receive → JSON → process → deliver WebSocket server.
@@ -16,14 +17,20 @@ type Server struct {
 	name     string
 	cfg      config.AppConfig
 	hub      *Hub
+	log      *logging.Logger
 	upgrader websocket.Upgrader
 }
 
-// New creates a Server from AppConfig.
-func New(cfg config.AppConfig) *Server {
+// New creates a Server and opens log sinks from cfg.Log.
+func New(cfg config.AppConfig) (*Server, error) {
+	lg, err := logging.New(cfg.Log)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		name: cfg.ServerName,
 		cfg:  cfg,
+		log:  lg,
 		hub:  NewHub(cfg.AreaConfig(), cfg.ChannelConfig()),
 	}
 	s.upgrader = websocket.Upgrader{
@@ -31,7 +38,24 @@ func New(cfg config.AppConfig) *Server {
 		WriteBufferSize: cfg.WriteBufferSize,
 		CheckOrigin:     s.checkOrigin,
 	}
-	return s
+	lg.Info("server", "logger ready",
+		"system_mode="+cfg.Log.SystemMode,
+		"access_mode="+cfg.Log.AccessMode,
+	)
+	return s, nil
+}
+
+// Logger exposes the logger for tests / extensions.
+func (s *Server) Logger() *logging.Logger {
+	return s.log
+}
+
+// Close closes log sinks.
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	return s.log.Close()
 }
 
 func (s *Server) checkOrigin(r *http.Request) bool {
@@ -49,15 +73,18 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 }
 
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
-	// RFC 6455: Upgrade only succeeds with proper Connection/Upgrade headers
-	// (enforced by gorilla/websocket).
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
+		s.log.Warn("ws", "upgrade failed", err.Error(), "remote="+r.RemoteAddr)
+		s.log.Access(logging.AccessEntry{
+			RemoteAddr: r.RemoteAddr,
+			Action:     "upgrade_fail",
+			Detail:     err.Error(),
+		})
 		return
 	}
 
-	client := newClient(s.hub, conn, r.RemoteAddr)
+	client := newClient(s.hub, conn, r.RemoteAddr, s.log)
 	s.hub.register(client)
 	extOnConnect(client)
 
@@ -105,8 +132,14 @@ func (s *Server) Hub() *Hub {
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen(s.cfg.Network, s.cfg.ListenAddr)
 	if err != nil {
+		s.log.Error("server", "listen failed", err.Error())
 		return err
 	}
+	s.log.Info("server", "listening",
+		"network="+s.cfg.Network,
+		"addr="+s.cfg.ListenAddr,
+		"ws="+s.cfg.WSPath,
+	)
 	log.Printf("server=%s network=%s listen=%s ws=%s health=%s",
 		s.name, s.cfg.Network, s.cfg.ListenAddr, s.cfg.WSPath, s.cfg.HealthPath)
 	return http.Serve(ln, s.NewMux())

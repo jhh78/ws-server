@@ -147,9 +147,62 @@ cp sample.env .env
 | `MAX_CHANNELS` | `20000` | 동시 채널 수 (`0` = 무제한) |
 | `MAX_CLIENTS_PER_CHANNEL` | `200` | 채널당 최대 인원 (`0` = 무제한) |
 
+#### 로그 (시스템 / 액세스)
+
+| 변수 | 기본 | 설명 |
+|------|------|------|
+| `SYSTEM_LOG_MODE` | `file` | 시스템 로그: `off` \| `file` \| `db` |
+| `SYSTEM_LOG_FILE` | `logs/system.log` | `file` 모드 경로 |
+| `ACCESS_LOG_MODE` | `file` | 액세스 로그: `off` \| `file` \| `db` |
+| `ACCESS_LOG_FILE` | `logs/access.log` | `file` 모드 경로 |
+| `LOG_DB_DRIVER` | `sqlite` | `sqlite` \| `mysql` \| `postgres` (별칭: sqlite3, mariadb, postgresql, pg) |
+| `LOG_DB_DSN` | `logs/ws-server.db` | 드라이버별 연결 문자열 (아래 예) |
+
+- **시스템 로그**: 기동, 접속/종료, 업그레이드 실패, listen 오류 등 (`INFO`/`WARN`/`ERROR`)
+- **액세스 로그**: `connect` / `disconnect` / `join` / `leave` / `send` / `whisper` / `ping` / `error` / `upgrade_fail`
+- DB 모드 시 테이블 `system_logs`, `access_logs` 를 기동 시 자동 생성 (SQLite / MySQL / PostgreSQL 방언)
+
+`file` 예 (`sample.env` 기본):
+
+```env
+SYSTEM_LOG_MODE=file
+SYSTEM_LOG_FILE=logs/system.log
+ACCESS_LOG_MODE=file
+ACCESS_LOG_FILE=logs/access.log
+```
+
+`db` — SQLite:
+
+```env
+SYSTEM_LOG_MODE=db
+ACCESS_LOG_MODE=db
+LOG_DB_DRIVER=sqlite
+LOG_DB_DSN=logs/ws-server.db
+```
+
+`db` — MySQL / MariaDB:
+
+```env
+SYSTEM_LOG_MODE=db
+ACCESS_LOG_MODE=db
+LOG_DB_DRIVER=mysql
+LOG_DB_DSN=user:password@tcp(127.0.0.1:3306)/ws_logs?parseTime=true&charset=utf8mb4
+```
+
+`db` — PostgreSQL:
+
+```env
+SYSTEM_LOG_MODE=db
+ACCESS_LOG_MODE=db
+LOG_DB_DRIVER=postgres
+LOG_DB_DSN=postgres://user:password@127.0.0.1:5432/ws_logs?sslmode=disable
+```
+
+혼용 가능: 시스템만 DB, 액세스는 파일 등. 원격 DB 는 기동 시 `Ping` 으로 연결을 확인합니다.
+
 파일 형식: `KEY=VALUE`, `#` 주석, 빈 줄 무시. 알 수 없는 키는 `AppConfig.Extra` 에 보관됩니다 (향후 확장용).
 
-잘못된 정수·비 TCP `NETWORK`·경로 오류는 **기동 시 Load 실패**합니다.
+잘못된 정수·비 TCP `NETWORK`·경로 오류·로그 모드 오류는 **기동 시 Load 실패**합니다.
 
 ---
 
@@ -489,7 +542,12 @@ ws-server/                    # 서버 전용 저장소
 ├── cmd/ws-server/main.go     # 진입점 (-env, -addr)
 ├── config/
 │   ├── config.go             # AppConfig, Load, Validate
+│   ├── log.go                # 시스템/액세스 로그 설정
 │   └── load.go               # .env 파서
+├── logging/                  # file / SQLite 싱크
+│   ├── logging.go
+│   └── db.go
+├── logs/                     # 런타임 생성 (gitignore)
 ├── server/
 │   ├── server.go             # TCP Listen, Upgrade, 헬스
 │   ├── client.go             # 수신·송신, onReceive 파이프라인

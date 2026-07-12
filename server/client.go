@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/jhh78/ws-server/logging"
 )
 
 const (
@@ -27,6 +28,7 @@ type Client struct {
 	send   chan []byte
 	id     string
 	remote string
+	log    *logging.Logger
 
 	areas    map[string]struct{}
 	channels map[string]struct{}
@@ -35,14 +37,18 @@ type Client struct {
 	mu   sync.Mutex
 }
 
-func newClient(hub *Hub, conn *websocket.Conn, remote string) *Client {
+func newClient(hub *Hub, conn *websocket.Conn, remote string, lg *logging.Logger) *Client {
 	id := fmt.Sprintf("c%d", clientSeq.Add(1))
+	if lg == nil {
+		lg = logging.Nop()
+	}
 	return &Client{
 		hub:      hub,
 		conn:     conn,
 		send:     make(chan []byte, sendBufSize),
 		id:       id,
 		remote:   remote,
+		log:      lg,
 		areas:    make(map[string]struct{}),
 		channels: make(map[string]struct{}),
 	}
@@ -111,6 +117,12 @@ func (c *Client) onReceive(data []byte) {
 	// 1) JSON parse
 	msg, err := decodeEnvelope(data)
 	if err != nil {
+		c.log.Access(logging.AccessEntry{
+			ClientID:   c.id,
+			RemoteAddr: c.remote,
+			Action:     "error",
+			Detail:     "invalid json",
+		})
 		c.replyError("invalid json message", "", "")
 		return
 	}

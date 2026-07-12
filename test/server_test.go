@@ -13,7 +13,7 @@ import (
 func TestHealthHandler(t *testing.T) {
 	t.Parallel()
 
-	s := httptest.NewServer(server.New(testConfig()).NewMux())
+	s := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(s.Close)
 
 	resp, err := http.Get(s.URL + "/health")
@@ -45,11 +45,10 @@ func TestWelcomeJSON(t *testing.T) {
 	}
 }
 
-// 1) 특정 에리어에 들어가 있는 유저 전체에게 전송
 func TestAreaBroadcastToAllMembers(t *testing.T) {
 	t.Parallel()
 
-	ts := httptest.NewServer(server.New(testConfig()).NewMux())
+	ts := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(ts.Close)
 
 	a := dialWSURL(t, ts.URL, "/ws")
@@ -74,7 +73,7 @@ func TestAreaBroadcastToAllMembers(t *testing.T) {
 		Payload: payloadJSON(map[string]string{"name": "Bob"}),
 	})
 	expectType(t, b, "joined")
-	expectType(t, a, "system") // bob joined
+	expectType(t, a, "system")
 
 	body := map[string]any{"text": "hello map", "x": 1, "y": 2}
 	mustWriteEnv(t, a, server.Envelope{
@@ -103,11 +102,10 @@ func TestAreaBroadcastToAllMembers(t *testing.T) {
 	}
 }
 
-// 2) 특정 채널(파티/길드 등) 멤버에게만 전송
 func TestChannelBroadcastParty(t *testing.T) {
 	t.Parallel()
 
-	ts := httptest.NewServer(server.New(testConfig()).NewMux())
+	ts := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(ts.Close)
 
 	a := dialWSURL(t, ts.URL, "/ws")
@@ -121,7 +119,6 @@ func TestChannelBroadcastParty(t *testing.T) {
 	expectType(t, b, "welcome")
 	expectType(t, c, "welcome")
 
-	// a,b in same party; c in different party
 	mustWriteEnv(t, a, server.Envelope{
 		Type: "join", Scope: "channel", ChannelKind: "party", Target: "party-1",
 		Payload: payloadJSON("Alice"),
@@ -161,7 +158,7 @@ func TestChannelBroadcastParty(t *testing.T) {
 func TestChannelGuild(t *testing.T) {
 	t.Parallel()
 
-	ts := httptest.NewServer(server.New(testConfig()).NewMux())
+	ts := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(ts.Close)
 
 	a := dialWSURL(t, ts.URL, "/ws")
@@ -188,11 +185,10 @@ func TestChannelGuild(t *testing.T) {
 	}
 }
 
-// 귓속말: 특정 client_id 1:1
 func TestWhisperToClient(t *testing.T) {
 	t.Parallel()
 
-	ts := httptest.NewServer(server.New(testConfig()).NewMux())
+	ts := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(ts.Close)
 
 	a := dialWSURL(t, ts.URL, "/ws")
@@ -213,9 +209,8 @@ func TestWhisperToClient(t *testing.T) {
 
 	gotA := expectType(t, a, "whisper")
 	gotB := expectType(t, b, "whisper")
-	if gotB.To != wb.ClientID || gotA.ClientID != wa.ClientID {
-		// from client_id should be a's
-	}
+	_ = wa
+	_ = gotA
 	var p map[string]string
 	_ = json.Unmarshal(gotB.Payload, &p)
 	if p["text"] != "secret" {
@@ -271,7 +266,7 @@ func TestPingPong(t *testing.T) {
 func TestWebSocketRejectsNonUpgrade(t *testing.T) {
 	t.Parallel()
 
-	s := httptest.NewServer(server.New(testConfig()).NewMux())
+	s := httptest.NewServer(newTestServer(t, testConfig(t)).NewMux())
 	t.Cleanup(s.Close)
 
 	resp, err := http.Get(s.URL + "/ws")
@@ -287,9 +282,9 @@ func TestWebSocketRejectsNonUpgrade(t *testing.T) {
 func TestMaxClientsPerArea(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.MaxClientsPerArea = 1
-	ts := httptest.NewServer(server.New(cfg).NewMux())
+	ts := httptest.NewServer(newTestServer(t, cfg).NewMux())
 	t.Cleanup(ts.Close)
 
 	a := dialWSURL(t, ts.URL, "/ws")

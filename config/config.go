@@ -25,6 +25,13 @@ var KnownKeys = map[string]struct{}{
 	"MAX_AREAS":               {},
 	"MAX_CHANNELS":            {},
 	"MAX_CLIENTS_PER_CHANNEL": {},
+	// logging
+	"SYSTEM_LOG_MODE": {},
+	"ACCESS_LOG_MODE": {},
+	"SYSTEM_LOG_FILE": {},
+	"ACCESS_LOG_FILE": {},
+	"LOG_DB_DRIVER":   {},
+	"LOG_DB_DSN":      {},
 }
 
 // AppConfig is the full runtime skeleton for the realtime server.
@@ -49,6 +56,9 @@ type AppConfig struct {
 	MaxChannels          int
 	MaxClientsPerChannel int
 
+	// Log: system (file|db) and access (file|db) sinks.
+	Log LogConfig
+
 	// Extra holds unknown keys from the env file (forward-compatible).
 	Extra map[string]string
 }
@@ -68,6 +78,7 @@ func Default() AppConfig {
 		MaxAreas:             10000,
 		MaxChannels:          20000,
 		MaxClientsPerChannel: 200,
+		Log:                  DefaultLog(),
 		Extra:                map[string]string{},
 	}
 }
@@ -110,6 +121,9 @@ func Load(path string) (AppConfig, error) {
 	}
 	if c.MaxClientsPerChannel, err = envIntStrict("MAX_CLIENTS_PER_CHANNEL", c.MaxClientsPerChannel); err != nil {
 		return AppConfig{}, err
+	}
+	if c.Log, err = LoadLog(); err != nil {
+		return AppConfig{}, fmt.Errorf("log: %w", err)
 	}
 
 	for k, v := range st.fromFile {
