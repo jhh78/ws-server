@@ -149,7 +149,7 @@ cp sample.env .env
 | `MAX_AREAS` | `10000` | 동시 에리어 수 (`0` = 무제한) |
 | `MAX_CHANNELS` | `20000` | 동시 채널 수 (`0` = 무제한) |
 | `MAX_CLIENTS_PER_CHANNEL` | `200` | 채널당 최대 인원 (`0` = 무제한) |
-| `WEBHOOK_URL` | (빈 값) | 이벤트 POST URL. 비우면 비활성. 여러 개면 쉼표 구분 |
+| `WEBHOOK_URL` | (빈 값) | JSON 배열만. 예 `["https://a/h","https://b/h"]` (비우면 비활성) |
 | `WEBHOOK_TIMEOUT_MS` | `5000` | 웹훅 HTTP 타임아웃(ms) |
 
 #### 로그 (시스템 / 액세스)
@@ -359,8 +359,18 @@ interface Envelope {
 
 | 변수 | 설명 |
 |------|------|
-| `WEBHOOK_URL` | 비어 있으면 끔. `https://...` 한 개 또는 쉼표로 여러 개 |
+| `WEBHOOK_URL` | JSON 배열 문자열만. 비우거나 `[]` 이면 끔 |
 | `WEBHOOK_TIMEOUT_MS` | POST 타임아웃 (기본 5000) |
+
+**`WEBHOOK_URL` 형식 (통일)**
+
+```env
+WEBHOOK_URL=["https://a.example/hook","https://b.example/hook"]
+WEBHOOK_URL=["https://one.example/hook"]
+WEBHOOK_URL=
+```
+
+쉼표 나열·따옴표 없는 단일 URL 은 허용하지 않습니다. 파싱: `config.ParseWebhookURLs`.
 
 **요청:** `POST` · `Content-Type: application/json; charset=utf-8` · `User-Agent: ws-server-webhook/1`  
 **POST 시점:** `connect`, `disconnect`, `join`, `leave`, `send`, `whisper`, `ping`  

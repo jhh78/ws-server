@@ -154,3 +154,54 @@ func TestLoadEmptyUsesDefaults(t *testing.T) {
 		t.Fatalf("network = %q", cfg.Network)
 	}
 }
+
+// TestParseWebhookURLs 는 JSON 배열만 허용하는 WEBHOOK_URL 파싱을 검증합니다.
+func TestParseWebhookURLs(t *testing.T) {
+	ok := []struct {
+		raw  string
+		want []string
+	}{
+		{"", nil},
+		{`[]`, nil},
+		{`["https://a/h","https://b/h"]`, []string{"https://a/h", "https://b/h"}},
+		{`[ "https://a/h" , "https://b/h" ]`, []string{"https://a/h", "https://b/h"}},
+		{`["https://one.example/h"]`, []string{"https://one.example/h"}},
+	}
+	for _, tc := range ok {
+		got, err := config.ParseWebhookURLs(tc.raw)
+		if err != nil {
+			t.Fatalf("raw=%q err=%v", tc.raw, err)
+		}
+		if len(got) != len(tc.want) {
+			t.Fatalf("raw=%q len got=%d want=%d %v", tc.raw, len(got), len(tc.want), got)
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Fatalf("raw=%q [%d]=%q want %q", tc.raw, i, got[i], tc.want[i])
+			}
+		}
+	}
+	// 단일 URL / 쉼표 나열은 거부
+	for _, bad := range []string{
+		"https://one.example/h",
+		"https://a/h,https://b/h",
+		`not-json`,
+	} {
+		if _, err := config.ParseWebhookURLs(bad); err == nil {
+			t.Fatalf("expected error for %q", bad)
+		}
+	}
+	cfg := config.Default()
+	cfg.WebhookURL = `["https://x/h","https://y/h"]`
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.WebhookURLs()
+	if len(got) != 2 || got[0] != "https://x/h" {
+		t.Fatalf("WebhookURLs = %v", got)
+	}
+	cfg.WebhookURL = "https://bare.example/h"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected Validate reject bare URL")
+	}
+}

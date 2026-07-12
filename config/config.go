@@ -9,6 +9,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -84,7 +85,7 @@ type AppConfig struct {
 	Log LogConfig
 
 	// WebhookURL 은 이벤트 알림 POST 대상 (비어 있으면 비활성).
-	// 여러 URL 은 쉼표로 구분합니다.
+	// 형식은 JSON 배열 문자열만 허용: ["https://a/h","https://b/h"]
 	WebhookURL string
 	// WebhookTimeoutMs 는 각 POST 타임아웃(밀리초). 0 이하면 기본 5000.
 	WebhookTimeoutMs int
@@ -224,30 +225,61 @@ func (c AppConfig) Validate() error {
 	if c.WebhookTimeoutMs < 0 {
 		return fmt.Errorf("WEBHOOK_TIMEOUT_MS must be >= 0")
 	}
+	if _, err := ParseWebhookURLs(c.WebhookURL); err != nil {
+		return err
+	}
 	return nil
 }
 
-// WebhookURLs 는 WEBHOOK_URL 을 쉼표로 나눈 비어 있지 않은 URL 목록을 반환합니다.
+// WebhookURLs 는 WEBHOOK_URL JSON 배열을 URL 목록으로 파싱합니다.
+//
+// 유효하지 않은 값은 Validate 단계에서 걸리므로, 정상 로드 후에는 오류 없이 파싱됩니다.
 //
 // Returns:
-//   - []string: 트림된 URL 들 (없으면 nil)
+//   - []string: 트림된 URL 들 (비어 있으면 nil)
 func (c AppConfig) WebhookURLs() []string {
-	raw := strings.TrimSpace(c.WebhookURL)
+	urls, _ := ParseWebhookURLs(c.WebhookURL)
+	return urls
+}
+
+// ParseWebhookURLs 는 WEBHOOK_URL 을 JSON 문자열 배열로만 파싱합니다.
+//
+// 통일 형식:
+//
+//	WEBHOOK_URL=["https://a.example/hook","https://b.example/hook"]
+//	WEBHOOK_URL=["https://one.example/hook"]
+//	WEBHOOK_URL=          (비움 = 웹훅 비활성)
+//	WEBHOOK_URL=[]        (빈 배열 = 비활성)
+//
+// Parameters:
+//   - raw: env 값
+//
+// Returns:
+//   - []string: 비어 있지 않은 URL 목록, 없으면 nil
+//   - error: 비어 있지 않은데 JSON 배열이 아니거나 요소가 문자열이 아닐 때
+func ParseWebhookURLs(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
+	if !strings.HasPrefix(raw, "[") {
+		return nil, fmt.Errorf(`WEBHOOK_URL must be a JSON array, e.g. ["https://a.example/hook"] (got %q)`, raw)
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+		return nil, fmt.Errorf("WEBHOOK_URL: invalid JSON array: %w", err)
+	}
+	out := make([]string, 0, len(arr))
+	for _, p := range arr {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			out = append(out, p)
 		}
 	}
 	if len(out) == 0 {
-		return nil
+		return nil, nil
 	}
-	return out
+	return out, nil
 }
 
 // SetListenAddr 은 CLI -addr 로 LISTEN_ADDR 을 덮어씁니다.
